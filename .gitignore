@@ -38,6 +38,9 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
+# Local LRS (file-backed xAPI store — dev only)
+/.data/
+
 # Unity
 unity/Library/
 unity/Temp/

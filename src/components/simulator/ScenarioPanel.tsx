@@ -1,13 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CHANGEOVER_STEPS } from "@/lib/changeover-flow";
+import type { ScenarioStep } from "@/lib/session-store";
 import { useSessionStore } from "@/lib/session-store";
 import { buildStatement } from "@/lib/xapi";
+import ESignModal, { type ESignature } from "@/components/ESignModal";
+import { getPlantClient } from "@/lib/tenant-client";
 
-export default function ChangeoverPanel() {
+export interface ScenarioDefinition {
+  id: string;
+  title: string;
+  subtitle: string;
+  machineId: string;
+  activityId: string;
+  steps: ScenarioFullStep[];
+}
+
+export interface ScenarioFullStep extends ScenarioStep {
+  instruction: string;
+  hint: string;
+  commonDeviation: string;
+  grade?: "A" | "B" | "C";
+}
+
+export default function ScenarioPanel({
+  scenario,
+}: {
+  scenario: ScenarioDefinition;
+}) {
   const {
-    trainee,
+    scenarioId,
+    identity,
     startedAt,
     currentIndex,
     completed,
@@ -17,84 +40,98 @@ export default function ChangeoverPanel() {
     reset,
     score,
   } = useSessionStore();
-  const [name, setName] = useState("");
+
   const [elapsed, setElapsed] = useState(0);
-  const [flash, setFlash] = useState<null | { type: "ok" | "err"; text: string }>(null);
+  const [showSign, setShowSign] = useState(false);
+  const [flash, setFlash] = useState<
+    | null
+    | { type: "ok" | "err"; text: string }
+  >(null);
   const [submitted, setSubmitted] = useState(false);
 
+  const isThisScenario = scenarioId === scenario.id;
+
   useEffect(() => {
-    if (!startedAt || finished) return;
+    if (!startedAt || finished || !isThisScenario) return;
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
     return () => clearInterval(id);
-  }, [startedAt, finished]);
+  }, [startedAt, finished, isThisScenario]);
 
-  // Listen for deviation changes to flash a warning.
   useEffect(() => {
-    if (deviations.length === 0) return;
+    if (!isThisScenario || deviations.length === 0) return;
     const last = deviations[deviations.length - 1];
     setFlash({ type: "err", text: last.message });
     const t = setTimeout(() => setFlash(null), 3500);
     return () => clearTimeout(t);
-  }, [deviations.length]);
+  }, [deviations.length, isThisScenario]);
 
   useEffect(() => {
-    if (completed.length === 0) return;
+    if (!isThisScenario || completed.length === 0) return;
     const last = completed[completed.length - 1];
-    const step = CHANGEOVER_STEPS.find((s) => s.id === last);
+    const step = scenario.steps.find((s) => s.id === last);
     if (step) {
       setFlash({ type: "ok", text: `✓ ${step.title} — complete` });
       const t = setTimeout(() => setFlash(null), 2500);
       return () => clearTimeout(t);
     }
-  }, [completed.length]);
+  }, [completed.length, isThisScenario, scenario.steps]);
 
   useEffect(() => {
-    if (finished && trainee && !submitted) {
+    if (finished && isThisScenario && identity && !submitted) {
       setSubmitted(true);
-      submitStatement(trainee, score(), elapsed, deviations.length).catch(
-        () => undefined
-      );
+      submitStatement({
+        scenario,
+        identity,
+        scaled: score(),
+        durationSec: elapsed,
+        deviations: deviations.length,
+      }).catch(() => undefined);
     }
-  }, [finished, trainee, submitted, elapsed, deviations.length, score]);
+  }, [finished, isThisScenario, identity, submitted, elapsed, deviations.length, scenario, score]);
 
-  const currentStep = !finished ? CHANGEOVER_STEPS[currentIndex] : undefined;
-  const progressPct = Math.round(
-    (completed.length / CHANGEOVER_STEPS.length) * 100
-  );
+  const currentStep = isThisScenario && !finished
+    ? scenario.steps[currentIndex]
+    : undefined;
+  const progressPct = isThisScenario
+    ? Math.round((completed.length / scenario.steps.length) * 100)
+    : 0;
 
-  if (!startedAt) {
+  if (!startedAt || !isThisScenario) {
     return (
-      <div className="card">
-        <h3 className="text-lg font-semibold text-white">
-          Start a training session
-        </h3>
-        <p className="mt-1 text-sm text-slate-400">
-          SOP-TP-001 — Tablet Press Changeover (Product A → B). ~35 min nominal.
-        </p>
-        <label className="mt-4 block text-xs uppercase tracking-wide text-slate-400">
-          Trainee name
-        </label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Ramesh Kumar"
-          className="mt-1 w-full rounded-md border border-pharma-border bg-pharma-bg px-3 py-2 text-sm text-white focus:border-pharma-accent focus:outline-none"
-        />
-        <button
-          className="btn-primary mt-4 w-full"
-          disabled={!name.trim()}
-          onClick={() => start(name.trim())}
-        >
-          Begin SOP walkthrough
-        </button>
-        <ul className="mt-5 space-y-1 text-xs text-slate-500">
-          <li>• All actions are recorded as xAPI statements.</li>
-          <li>• Out-of-sequence actions are flagged as deviations.</li>
-          <li>• Score = steps complete − deviation penalty.</li>
-        </ul>
-      </div>
+      <>
+        <div className="card">
+          <h3 className="text-lg font-semibold text-white">
+            Start a training session
+          </h3>
+          <p className="mt-1 text-sm text-slate-400">{scenario.subtitle}</p>
+          <button
+            className="btn-primary mt-4 w-full"
+            onClick={() => setShowSign(true)}
+          >
+            Sign & begin
+          </button>
+          <ul className="mt-5 space-y-1 text-xs text-slate-500">
+            <li>• Electronic signature required (21 CFR Part 11)</li>
+            <li>• Every action recorded as xAPI statement</li>
+            <li>• Out-of-sequence actions flagged as deviations</li>
+          </ul>
+        </div>
+
+        {showSign && (
+          <ESignModal
+            title="Electronic signature required"
+            scenarioName={scenario.title}
+            onCancel={() => setShowSign(false)}
+            onSign={(sig: ESignature) => {
+              setShowSign(false);
+              setSubmitted(false);
+              start(scenario.id, scenario.steps, sig);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -106,7 +143,12 @@ export default function ChangeoverPanel() {
             <div className="text-xs uppercase tracking-wide text-slate-400">
               Trainee
             </div>
-            <div className="font-semibold text-white">{trainee}</div>
+            <div className="font-semibold text-white">
+              {identity?.name ?? "—"}
+            </div>
+            <div className="text-[11px] text-slate-500 font-mono">
+              {identity?.userId}
+            </div>
           </div>
           <div className="text-right">
             <div className="text-xs uppercase tracking-wide text-slate-400">
@@ -125,7 +167,7 @@ export default function ChangeoverPanel() {
         </div>
         <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
           <span>
-            {completed.length} / {CHANGEOVER_STEPS.length} steps
+            {completed.length} / {scenario.steps.length} steps
           </span>
           <span>Deviations: {deviations.length}</span>
         </div>
@@ -145,9 +187,9 @@ export default function ChangeoverPanel() {
 
       {currentStep && (
         <div className="card">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="badge bg-pharma-accent/20 text-pharma-accent border border-pharma-accent/30">
-              Step {currentStep.order} / {CHANGEOVER_STEPS.length}
+              Step {currentStep.order} / {scenario.steps.length}
             </span>
             <span
               className={`badge border ${
@@ -160,6 +202,11 @@ export default function ChangeoverPanel() {
             >
               {currentStep.criticality}
             </span>
+            {currentStep.grade && (
+              <span className="badge border border-brand-700/40 text-brand-100 bg-brand-900/30">
+                Grade {currentStep.grade}
+              </span>
+            )}
           </div>
           <h3 className="mt-2 text-lg font-semibold text-white">
             {currentStep.title}
@@ -192,29 +239,32 @@ export default function ChangeoverPanel() {
           )}
           <div className="mt-4 flex gap-2">
             <button className="btn-ghost flex-1" onClick={reset}>
-              Start over
+              Close session
             </button>
           </div>
         </div>
       )}
 
-      <StepList />
+      <StepList scenario={scenario} />
     </div>
   );
 }
 
-function StepList() {
+function StepList({ scenario }: { scenario: ScenarioDefinition }) {
   const completed = useSessionStore((s) => s.completed);
   const currentIndex = useSessionStore((s) => s.currentIndex);
+  const scenarioId = useSessionStore((s) => s.scenarioId);
+  const isThisScenario = scenarioId === scenario.id;
+
   return (
     <div className="card">
       <h4 className="text-xs uppercase tracking-wide text-slate-400 mb-2">
         SOP steps
       </h4>
       <ol className="space-y-1.5">
-        {CHANGEOVER_STEPS.map((s, i) => {
-          const done = completed.includes(s.id);
-          const current = i === currentIndex;
+        {scenario.steps.map((s, i) => {
+          const done = isThisScenario && completed.includes(s.id);
+          const current = isThisScenario && i === currentIndex;
           return (
             <li
               key={s.id}
@@ -244,26 +294,38 @@ function formatDuration(sec: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-async function submitStatement(
-  trainee: string,
-  scaled: number,
-  durationSec: number,
-  deviations: number
-) {
+async function submitStatement({
+  scenario,
+  identity,
+  scaled,
+  durationSec,
+  deviations,
+}: {
+  scenario: ScenarioDefinition;
+  identity: ESignature;
+  scaled: number;
+  durationSec: number;
+  deviations: number;
+}) {
+  const plantId = getPlantClient();
   const statement = buildStatement({
-    actorName: trainee,
-    actorId: trainee.toLowerCase().replace(/\s+/g, "."),
+    actorName: identity.name,
+    actorId: identity.userId,
     verb: scaled >= 0.7 ? "passed" : "failed",
-    verbDisplay: scaled >= 0.7 ? "passed" : "failed",
-    activityId: "https://mktech.pharma/activities/sop-tp-001",
-    activityName: "Tablet Press Changeover — Product A to B",
-    machineId: "cadmach-cmd4-d45",
-    sopId: "sop_tp_001",
+    activityId: scenario.activityId,
+    activityName: scenario.title,
+    machineId: scenario.machineId,
+    sopId: scenario.id,
     success: scaled >= 0.7,
     scaled,
     durationSec,
     extensions: {
       "https://mktech.pharma/ext/deviations": deviations,
+      "https://mktech.pharma/ext/plant-id": plantId,
+      "https://mktech.pharma/ext/e-signature": {
+        reason: identity.reason,
+        signedAt: identity.signedAt,
+      },
     },
   });
 

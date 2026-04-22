@@ -3,12 +3,13 @@ import { XApiStatementSchema } from "@/lib/xapi";
 import { listStatements, recordStatement } from "@/lib/lrs-store";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET() {
-  return NextResponse.json({
-    version: "1.0.3",
-    statements: listStatements().slice(0, 100),
-  });
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const limit = Math.min(500, Number(url.searchParams.get("limit") ?? "100"));
+  const statements = await listStatements(limit);
+  return NextResponse.json({ version: "1.0.3", statements });
 }
 
 export async function POST(req: Request) {
@@ -27,9 +28,7 @@ export async function POST(req: Request) {
     );
   }
 
-  recordStatement(parsed.data);
-  return NextResponse.json(
-    { ok: true, id: parsed.data.id ?? null },
-    { status: 201 },
-  );
+  const id = parsed.data.id ?? crypto.randomUUID();
+  await recordStatement({ ...parsed.data, id });
+  return NextResponse.json({ ok: true, id }, { status: 201 });
 }

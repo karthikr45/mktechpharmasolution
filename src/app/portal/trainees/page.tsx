@@ -1,47 +1,53 @@
-import { trainees } from "@/lib/mock-data";
+import { listStatementsByPlant } from "@/lib/lrs-store";
+import { getPlant } from "@/lib/tenant-server";
+import { rollupTrainees, toSessionRows } from "@/lib/analytics";
 
-export default function TraineesPage() {
+export const dynamic = "force-dynamic";
+
+export default async function TraineesPage() {
+  const plant = getPlant();
+  const statements = await listStatementsByPlant(plant?.id ?? null, 1000);
+  const rows = toSessionRows(statements);
+  const trainees = rollupTrainees(rows);
+
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between p-4">
         <h3 className="font-semibold text-white">Trainees</h3>
-        <span className="text-xs text-slate-500">{trainees.length} records</span>
+        <span className="text-xs text-slate-500">
+          {trainees.length} active
+          {plant && ` · ${plant.label}`}
+        </span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-pharma-bg/60 text-slate-400 text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-4 py-2 text-left">Name</th>
-              <th className="px-4 py-2 text-left">Plant</th>
-              <th className="px-4 py-2 text-left">Dept.</th>
-              <th className="px-4 py-2 text-left">Progress</th>
-              <th className="px-4 py-2 text-left">Avg. Score</th>
-              <th className="px-4 py-2 text-left">Last session</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-pharma-border">
-            {trainees.map((t) => {
-              const pct = Math.round((t.sopsCompleted / t.sopsAssigned) * 100);
-              return (
+      {trainees.length === 0 ? (
+        <p className="p-4 text-sm text-slate-500">No trainees yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-pharma-bg/60 text-slate-400 text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-2 text-left">Name</th>
+                <th className="px-4 py-2 text-left">Sessions</th>
+                <th className="px-4 py-2 text-left">Pass / Fail</th>
+                <th className="px-4 py-2 text-left">Avg. Score</th>
+                <th className="px-4 py-2 text-left">Deviations</th>
+                <th className="px-4 py-2 text-left">Last session</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-pharma-border">
+              {trainees.map((t) => (
                 <tr key={t.id} className="hover:bg-pharma-border/20">
                   <td className="px-4 py-3">
                     <div className="font-medium text-white">{t.name}</div>
-                    <div className="text-xs text-slate-500">{t.role}</div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">{t.plant}</td>
-                  <td className="px-4 py-3 text-slate-300">{t.department}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-pharma-border/50">
-                        <div
-                          className="h-full bg-pharma-accent"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-slate-400">
-                        {t.sopsCompleted}/{t.sopsAssigned}
-                      </span>
+                    <div className="text-xs text-slate-500 font-mono">
+                      {t.id}
                     </div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-300">{t.sessions}</td>
+                  <td className="px-4 py-3 text-slate-300">
+                    <span className="text-green-300">{t.passed}</span>
+                    <span className="text-slate-600"> / </span>
+                    <span className="text-red-300">{t.failed}</span>
                   </td>
                   <td
                     className={`px-4 py-3 font-mono text-sm ${
@@ -54,15 +60,18 @@ export default function TraineesPage() {
                   >
                     {Math.round(t.avgScore * 100)}%
                   </td>
+                  <td className="px-4 py-3 text-slate-400 font-mono">
+                    {t.totalDeviations}
+                  </td>
                   <td className="px-4 py-3 text-slate-400 text-xs">
                     {new Date(t.lastSessionAt).toLocaleString()}
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

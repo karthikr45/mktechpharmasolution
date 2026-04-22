@@ -2,24 +2,24 @@ import dynamic from "next/dynamic";
 import ScenarioPanel, {
   type ScenarioDefinition,
 } from "@/components/simulator/ScenarioPanel";
-import { CHANGEOVER_STEPS } from "@/lib/changeover-flow";
+import { ASEPTIC_STEPS } from "@/lib/aseptic-flow";
 
-const TabletPressScene = dynamic(
-  () => import("@/components/simulator/TabletPressScene"),
+const AsepticScene = dynamic(
+  () => import("@/components/simulator/AsepticScene"),
   { ssr: false, loading: () => <SceneFallback /> },
 );
 
 export const metadata = {
-  title: "Tablet Press Simulator — MKTech PharmaSim",
+  title: "Aseptic Intervention Simulator — MKTech PharmaSim",
 };
 
 const SCENARIO: ScenarioDefinition = {
-  id: "sop_tp_001",
-  title: "Tablet Press Changeover — Product A to B",
-  subtitle: "SOP-TP-001 · Cadmach CMD-4 D45 · ~35 min nominal",
-  machineId: "cadmach-cmd4-d45",
-  activityId: "https://mktech.pharma/activities/sop-tp-001",
-  steps: CHANGEOVER_STEPS.map((s) => ({
+  id: "sop_as_001",
+  title: "Grade A Aseptic Intervention",
+  subtitle: "SOP-AS-001 · Bosch FLC-3080 · ~20 min nominal",
+  machineId: "bosch-flc-3080",
+  activityId: "https://mktech.pharma/activities/sop-as-001",
+  steps: ASEPTIC_STEPS.map((s) => ({
     id: s.id,
     order: s.order,
     title: s.title,
@@ -28,30 +28,31 @@ const SCENARIO: ScenarioDefinition = {
     instruction: s.instruction,
     hint: s.hint,
     commonDeviation: s.commonDeviation,
+    grade: s.grade,
   })),
 };
 
-export default function TabletPressSimulatorPage() {
+export default function AsepticSimulatorPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-semibold text-white">
-            Tablet Press Simulator
+            Aseptic Intervention Simulator
           </h1>
           <p className="text-sm text-slate-400">
-            Cadmach CMD-4 D45 · SOP-TP-001 Changeover
+            Bosch FLC-3080 · SOP-AS-001 · Grade A under LAF
           </p>
         </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
           <span className="h-2 w-2 rounded-full bg-pharma-good animate-pulse" />
-          Simulation mode
+          Simulation mode · Grade A envelope
         </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
         <div className="card p-0 overflow-hidden h-[560px]">
-          <TabletPressScene />
+          <AsepticScene />
         </div>
         <div>
           <ScenarioPanel scenario={SCENARIO} />
@@ -64,7 +65,7 @@ export default function TabletPressSimulatorPage() {
 function SceneFallback() {
   return (
     <div className="h-full w-full flex items-center justify-center text-slate-500 text-sm">
-      Loading 3D scene...
+      Loading 3D cleanroom...
     </div>
   );
 }

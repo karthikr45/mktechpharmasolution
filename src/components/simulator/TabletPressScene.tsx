@@ -5,7 +5,6 @@ import { OrbitControls, Html, ContactShadows } from "@react-three/drei";
 import { Suspense, useRef, useState } from "react";
 import type { Mesh, Group } from "three";
 import { useSessionStore } from "@/lib/session-store";
-import { CHANGEOVER_STEPS } from "@/lib/changeover-flow";
 
 type HotspotKey =
   | "statusLight"
@@ -206,8 +205,12 @@ function PressBody() {
 export default function TabletPressScene() {
   const currentIndex = useSessionStore((s) => s.currentIndex);
   const finished = useSessionStore((s) => s.finished);
+  const steps = useSessionStore((s) => s.steps);
+  const scenarioId = useSessionStore((s) => s.scenarioId);
   const tryHotspot = useSessionStore((s) => s.tryHotspot);
-  const expectedStep = !finished ? CHANGEOVER_STEPS[currentIndex] : undefined;
+  const isThisScenario = scenarioId === "sop_tp_001";
+  const expectedStep =
+    isThisScenario && !finished ? steps[currentIndex] : undefined;
   const activeHotspot = expectedStep?.hotspot as HotspotKey | undefined;
 
   const hotspots: Array<{

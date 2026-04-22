@@ -28,6 +28,22 @@ because Unity projects include binary caches and a license check is required.
 - **Auth**: bearer token issued by the portal; 21 CFR Part 11 e-signature
   captured pre-session.
 
+## What's already scaffolded
+
+C# scripts under `Assets/Scripts/` are ready to drop into a fresh Unity
+project:
+
+| Script | Purpose |
+|--------|---------|
+| `SOPStep.cs` | Data class mirroring the web's SOP step shape |
+| `Scenario.cs` | ScriptableObject for a full scenario |
+| `Hotspot.cs` | MonoBehaviour attached to interactable objects |
+| `SessionManager.cs` | Session state machine (the Unity twin of `session-store.ts`) |
+| `XApiClient.cs` | Posts completion to the portal's `/api/xapi/statements` |
+
+Create your scenes under `Assets/Scenes/` — see that folder's README for
+per-scene set-up.
+
 ## Initialization (manual)
 
 ```bash

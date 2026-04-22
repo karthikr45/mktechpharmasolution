@@ -39,8 +39,8 @@ function Hero() {
             you're ready.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/simulator/tablet-press" className="btn-primary">
-              Launch web simulator →
+            <Link href="/simulator" className="btn-primary">
+              Browse training scenarios →
             </Link>
             <Link href="/portal" className="btn-ghost">
               Open training portal
@@ -221,8 +221,8 @@ function CTA() {
             No headset required. Runs in any modern browser.
           </p>
         </div>
-        <Link href="/simulator/tablet-press" className="btn-primary whitespace-nowrap">
-          Launch simulator →
+        <Link href="/simulator" className="btn-primary whitespace-nowrap">
+          Browse scenarios →
         </Link>
       </div>
     </section>

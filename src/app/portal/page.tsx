@@ -1,26 +1,25 @@
 import Link from "next/link";
-import { sessions, sopModules, trainees } from "@/lib/mock-data";
+import { listStatementsByPlant } from "@/lib/lrs-store";
+import { getPlant } from "@/lib/tenant-server";
+import { computeKpis, rollupTrainees, toSessionRows } from "@/lib/analytics";
+import { sopModules } from "@/lib/mock-data";
 
-export default function PortalDashboard() {
-  const totalTrainees = trainees.length;
-  const completionRate =
-    Math.round(
-      (trainees.reduce((a, t) => a + t.sopsCompleted, 0) /
-        trainees.reduce((a, t) => a + t.sopsAssigned, 0)) *
-        100,
-    ) || 0;
-  const avgScore = Math.round(
-    (trainees.reduce((a, t) => a + t.avgScore, 0) / trainees.length) * 100,
-  );
-  const openDeviations = sessions.reduce((a, s) => a + s.deviations, 0);
+export const dynamic = "force-dynamic";
+
+export default async function PortalDashboard() {
+  const plant = getPlant();
+  const statements = await listStatementsByPlant(plant?.id ?? null, 400);
+  const rows = toSessionRows(statements);
+  const kpi = computeKpis(rows);
+  const trainees = rollupTrainees(rows);
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPI label="Active trainees" value={totalTrainees.toString()} trend="+2 this week" />
-        <KPI label="SOP completion" value={`${completionRate}%`} trend="+6% vs last mo" />
-        <KPI label="Avg score" value={`${avgScore}%`} trend="+3%" />
-        <KPI label="Deviations (30d)" value={openDeviations.toString()} trend="-5 vs prior" />
+        <KPI label="Active trainees" value={trainees.length.toString()} />
+        <KPI label="Pass rate" value={`${kpi.passRate}%`} />
+        <KPI label="Avg score" value={`${kpi.avgScore}%`} />
+        <KPI label="Deviations (30d)" value={kpi.deviations.toString()} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -31,25 +30,40 @@ export default function PortalDashboard() {
               View all →
             </Link>
           </div>
-          <ul className="mt-3 divide-y divide-pharma-border">
-            {sessions.slice(0, 5).map((s) => (
-              <li key={s.id} className="py-2.5 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-sm text-white truncate">{s.module}</div>
-                  <div className="text-xs text-slate-500 truncate">
-                    {s.trainee} · {s.machine}
+          {rows.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">
+              No sessions yet for this plant. Run one in the{" "}
+              <Link href="/simulator" className="text-pharma-accent">
+                simulator
+              </Link>
+              .
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-pharma-border">
+              {rows.slice(0, 6).map((s) => (
+                <li
+                  key={s.id}
+                  className="py-2.5 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm text-white truncate">{s.module}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      {s.trainee} · {s.machine}
+                    </div>
                   </div>
-                </div>
-                <StatusBadge status={s.status} score={s.score} />
-              </li>
-            ))}
-          </ul>
+                  <StatusBadge status={s.status} score={s.score} />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-white">SOP library</h3>
-            <span className="text-xs text-slate-500">{sopModules.length} modules</span>
+            <span className="text-xs text-slate-500">
+              {sopModules.length} modules
+            </span>
           </div>
           <ul className="mt-3 space-y-2.5">
             {sopModules.map((m) => (
@@ -83,11 +97,17 @@ export default function PortalDashboard() {
       <div className="card">
         <h3 className="font-semibold text-white">Ready to train?</h3>
         <p className="text-sm text-slate-400 mt-1">
-          Launch the web simulator — no headset required.
+          Pick a scenario — no headset required for the web version.
         </p>
-        <div className="mt-3">
-          <Link href="/simulator/tablet-press" className="btn-primary">
-            Open Tablet Press simulator →
+        <div className="mt-3 flex gap-2 flex-wrap">
+          <Link href="/simulator" className="btn-primary">
+            Browse scenarios →
+          </Link>
+          <Link href="/simulator/tablet-press" className="btn-ghost">
+            Tablet press
+          </Link>
+          <Link href="/simulator/aseptic" className="btn-ghost">
+            Aseptic intervention
           </Link>
         </div>
       </div>
@@ -95,20 +115,13 @@ export default function PortalDashboard() {
   );
 }
 
-function KPI({
-  label,
-  value,
-  trend,
-}: {
-  label: string;
-  value: string;
-  trend: string;
-}) {
+function KPI({ label, value }: { label: string; value: string }) {
   return (
     <div className="card">
-      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
       <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
-      <div className="mt-1 text-[11px] text-pharma-good">{trend}</div>
     </div>
   );
 }

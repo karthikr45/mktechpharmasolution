@@ -34,7 +34,7 @@ function TopNav() {
         </Link>
         <nav className="flex items-center gap-1 text-sm">
           <Link
-            href="/simulator/tablet-press"
+            href="/simulator"
             className="rounded-md px-3 py-1.5 text-slate-300 hover:bg-pharma-border/40 hover:text-white"
           >
             Simulator

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getPlant } from "@/lib/tenant-server";
+import PlantSelector from "@/components/PlantSelector";
 
 const nav = [
   { href: "/portal", label: "Dashboard" },
@@ -12,15 +14,24 @@ export default function PortalLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const plant = getPlant();
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="flex items-baseline justify-between mb-6">
+      <div className="flex items-baseline justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-white">Training Portal</h1>
           <p className="text-sm text-slate-400">
-            Records, SOPs and GxP-aligned analytics
+            {plant ? (
+              <>
+                <span className="text-pharma-accent">{plant.organisation}</span>{" "}
+                · {plant.unit} · {plant.focus}
+              </>
+            ) : (
+              "All plants"
+            )}
           </p>
         </div>
+        <PlantSelector currentId={plant?.id ?? null} />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
         <aside className="card p-2 md:p-3 h-fit">

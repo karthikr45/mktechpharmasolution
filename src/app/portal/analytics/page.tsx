@@ -1,118 +1,119 @@
-import { sessions, trainees } from "@/lib/mock-data";
+import { listStatementsByPlant, listStatements } from "@/lib/lrs-store";
+import { getPlant } from "@/lib/tenant-server";
+import { toSessionRows, computeKpis } from "@/lib/analytics";
 
-export default function AnalyticsPage() {
-  const byPlant = trainees.reduce<Record<string, { total: number; done: number }>>(
-    (acc, t) => {
-      acc[t.plant] = acc[t.plant] ?? { total: 0, done: 0 };
-      acc[t.plant].total += t.sopsAssigned;
-      acc[t.plant].done += t.sopsCompleted;
-      return acc;
-    },
-    {},
-  );
-  const byDept = trainees.reduce<Record<string, number[]>>((acc, t) => {
-    acc[t.department] = acc[t.department] ?? [];
-    acc[t.department].push(t.avgScore);
-    return acc;
-  }, {});
+export const dynamic = "force-dynamic";
 
-  const totalDeviations = sessions.reduce((a, s) => a + s.deviations, 0);
-  const passedSessions = sessions.filter((s) => s.status === "passed").length;
-  const failedSessions = sessions.filter((s) => s.status === "failed").length;
-  const totalComplete = passedSessions + failedSessions;
-  const passRate = totalComplete
-    ? Math.round((passedSessions / totalComplete) * 100)
-    : 0;
+export default async function AnalyticsPage() {
+  const plant = getPlant();
+  const scoped = await listStatementsByPlant(plant?.id ?? null, 1000);
+  const allRows = toSessionRows(scoped);
+  const kpi = computeKpis(allRows);
+
+  // Plant-wide cross-section (always global for this panel).
+  const globalRows = toSessionRows(await listStatements(1000));
+  const byPlant = new Map<string, { sessions: number; passed: number }>();
+  for (const r of globalRows) {
+    const key = r.plantId ?? "unknown";
+    const cur = byPlant.get(key) ?? { sessions: 0, passed: 0 };
+    cur.sessions += 1;
+    if (r.status === "passed") cur.passed += 1;
+    byPlant.set(key, cur);
+  }
+
+  const byModule = new Map<
+    string,
+    { sessions: number; passed: number; deviations: number }
+  >();
+  for (const r of allRows) {
+    const cur = byModule.get(r.module) ?? {
+      sessions: 0,
+      passed: 0,
+      deviations: 0,
+    };
+    cur.sessions += 1;
+    if (r.status === "passed") cur.passed += 1;
+    cur.deviations += r.deviations;
+    byModule.set(r.module, cur);
+  }
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPI label="Pass rate" value={`${passRate}%`} />
-        <KPI label="Deviations" value={totalDeviations.toString()} />
-        <KPI label="Sessions (live + done)" value={sessions.length.toString()} />
-        <KPI label="Active plants" value={Object.keys(byPlant).length.toString()} />
+        <KPI label="Sessions" value={kpi.sessions.toString()} />
+        <KPI label="Pass rate" value={`${kpi.passRate}%`} />
+        <KPI label="Avg score" value={`${kpi.avgScore}%`} />
+        <KPI label="Deviations" value={kpi.deviations.toString()} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
-          <h3 className="font-semibold text-white">SOP completion by plant</h3>
+          <h3 className="font-semibold text-white">Pass rate — by plant</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Compares all plants regardless of current filter.
+          </p>
           <div className="mt-4 space-y-3">
-            {Object.entries(byPlant).map(([plant, v]) => {
-              const pct = Math.round((v.done / v.total) * 100);
-              return (
-                <div key={plant}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-300">{plant}</span>
-                    <span className="text-slate-400 font-mono">{pct}%</span>
+            {Array.from(byPlant.entries())
+              .sort((a, b) => b[1].sessions - a[1].sessions)
+              .map(([pid, v]) => {
+                const pct = v.sessions
+                  ? Math.round((v.passed / v.sessions) * 100)
+                  : 0;
+                return (
+                  <div key={pid}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-300 font-mono">{pid}</span>
+                      <span className="text-slate-400 font-mono">
+                        {pct}% ({v.passed}/{v.sessions})
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-pharma-border/50">
+                      <div
+                        className="h-full bg-gradient-to-r from-pharma-accent to-brand-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-pharma-border/50">
-                    <div
-                      className="h-full bg-gradient-to-r from-pharma-accent to-brand-500"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
 
         <div className="card">
-          <h3 className="font-semibold text-white">Avg. score by department</h3>
+          <h3 className="font-semibold text-white">Deviations — by module</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Hotspot for remediation. Higher bars = more deviations.
+          </p>
           <div className="mt-4 space-y-3">
-            {Object.entries(byDept).map(([dept, scores]) => {
-              const avg = Math.round(
-                (scores.reduce((a, b) => a + b, 0) / scores.length) * 100,
-              );
-              const color =
-                avg >= 90 ? "#22c55e" : avg >= 75 ? "#f59e0b" : "#ef4444";
-              return (
-                <div key={dept}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-300">{dept}</span>
-                    <span className="text-slate-400 font-mono">{avg}%</span>
+            {Array.from(byModule.entries())
+              .sort((a, b) => b[1].deviations - a[1].deviations)
+              .slice(0, 8)
+              .map(([mod, v]) => {
+                const max = Math.max(
+                  1,
+                  ...Array.from(byModule.values()).map((x) => x.deviations),
+                );
+                const pct = Math.round((v.deviations / max) * 100);
+                return (
+                  <div key={mod}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-300 truncate pr-2">
+                        {mod}
+                      </span>
+                      <span className="text-slate-400 font-mono">
+                        {v.deviations}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-pharma-border/50">
+                      <div
+                        className="h-full bg-gradient-to-r from-pharma-warn to-pharma-bad"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-pharma-border/50">
-                    <div
-                      className="h-full"
-                      style={{ width: `${avg}%`, background: color }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 className="font-semibold text-white">Deviation heatmap — top SOP steps</h3>
-        <p className="text-xs text-slate-500 mt-1">
-          Indicative data. Populated from live xAPI once sessions are recorded.
-        </p>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {[
-            { step: "Line clearance", count: 8 },
-            { step: "Cleaning verification", count: 12 },
-            { step: "Torque check", count: 5 },
-            { step: "First-article inspection", count: 9 },
-            { step: "Parameter entry", count: 3 },
-            { step: "E-signature capture", count: 6 },
-          ].map((row) => {
-            const intensity = Math.min(1, row.count / 12);
-            return (
-              <div
-                key={row.step}
-                className="rounded-md border border-pharma-border p-3 text-sm"
-                style={{
-                  background: `rgba(239,68,68,${intensity * 0.35})`,
-                }}
-              >
-                <div className="text-white">{row.step}</div>
-                <div className="text-xs text-slate-400">{row.count} events</div>
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>
@@ -122,7 +123,9 @@ export default function AnalyticsPage() {
 function KPI({ label, value }: { label: string; value: string }) {
   return (
     <div className="card">
-      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
       <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
     </div>
   );
